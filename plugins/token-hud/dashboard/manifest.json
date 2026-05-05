@@ -1,0 +1,11 @@
+{
+  "name": "token-hud",
+  "label": "Token HUD",
+  "description": "Real-time token usage, model, and cost heads-up display for the Chat tab.",
+  "icon": "Cpu",
+  "version": "1.0.0",
+  "tab": { "hidden": true },
+  "slots": ["chat:top"],
+  "entry": "dist/index.js",
+  "has_api": false
+}

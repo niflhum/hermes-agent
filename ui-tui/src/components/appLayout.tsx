@@ -27,6 +27,7 @@ import { MessageLine } from './messageLine.js'
 import { QueuedMessages } from './queuedMessages.js'
 import { LiveTodoPanel, StreamingAssistant } from './streamingAssistant.js'
 import { TextInput, type TextInputMouseApi } from './textInput.js'
+import { TokenHUD } from './tokenHUD.js'
 
 const PromptPrefix = memo(function PromptPrefix({
   bold = false,
@@ -375,6 +376,7 @@ export const AppLayout = memo(function AppLayout({
   return (
     <Shell {...shellProps}>
       <Box flexDirection="column" flexGrow={1}>
+        <TokenHUD t={ui.theme} />
         <Box flexDirection="row" flexGrow={1}>
           {overlay.agents ? (
             <PerfPane id="agents">

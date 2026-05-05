@@ -312,8 +312,6 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
     "deepseek": [
         "deepseek-v4-pro",
         "deepseek-v4-flash",
-        "deepseek-chat",
-        "deepseek-reasoner",
     ],
     "xiaomi": [
         "mimo-v2.5-pro",
@@ -1839,7 +1837,6 @@ def _resolve_copilot_catalog_api_key() -> str:
 _MODELS_DEV_PREFERRED: frozenset[str] = frozenset({
     "opencode-go",
     "opencode-zen",
-    "deepseek",
     "kilocode",
     "fireworks",
     "mistral",

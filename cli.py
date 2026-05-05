@@ -5556,6 +5556,7 @@ class HermesCLI:
             state["stage"] = "model"
             state["provider_data"] = provider_data
             state["model_list"] = model_list
+            state["model_name_map"] = provider_data.get("model_name_map", {})
             state["selected"] = 0
             self._invalidate(min_interval=0.0)
             return
@@ -5575,8 +5576,14 @@ class HermesCLI:
             if selected < len(model_list):
                 from hermes_cli.model_switch import switch_model
                 chosen_model = model_list[selected]
+                # Resolve display name → actual model ID for user-defined providers
+                name_map = state.get("model_name_map")
+                if name_map and isinstance(name_map, dict) and chosen_model in name_map:
+                    model_id = name_map[chosen_model]
+                else:
+                    model_id = chosen_model
                 result = switch_model(
-                    raw_input=chosen_model,
+                    raw_input=model_id,
                     current_provider=self.provider or "",
                     current_model=self.model or "",
                     current_base_url=self.base_url or "",

@@ -1428,17 +1428,34 @@ def list_authenticated_providers(
 
             # Build models list from both default_model and full models array
             models_list = []
+            model_name_map: dict[str, str] = {}  # display name → actual model ID
             if default_model:
-                models_list.append(default_model)
+                # If default_model matches a configured model with a name, use the name
+                default_name = default_model
+                cfg_models_preview = ep_cfg.get("models", [])
+                if isinstance(cfg_models_preview, dict) and default_model in cfg_models_preview:
+                    mcfg = cfg_models_preview[default_model]
+                    if isinstance(mcfg, dict) and mcfg.get("name"):
+                        default_name = mcfg["name"]
+                models_list.append(default_name)
+                model_name_map[default_name] = default_model
             # Also include the full models list from config.
             # Hermes writes ``models:`` as a dict keyed by model id
             # (see hermes_cli/main.py::_save_custom_provider); older
             # configs or hand-edited files may still use a list.
             cfg_models = ep_cfg.get("models", [])
             if isinstance(cfg_models, dict):
-                for m in cfg_models:
-                    if m and m not in models_list:
-                        models_list.append(m)
+                for m, mcfg in cfg_models.items():
+                    if not m or m == "default":
+                        continue
+                    # Prefer the display name from the model config, fall back to the key
+                    if isinstance(mcfg, dict) and mcfg.get("name"):
+                        display = mcfg["name"]
+                    else:
+                        display = m
+                    if display not in models_list:
+                        models_list.append(display)
+                        model_name_map[display] = m
             elif isinstance(cfg_models, list):
                 for m in cfg_models:
                     if m and m not in models_list:
@@ -1479,6 +1496,7 @@ def list_authenticated_providers(
                 "is_current": ep_name == current_provider,
                 "is_user_defined": True,
                 "models": models_list,
+                "model_name_map": model_name_map,
                 "total_models": len(models_list) if models_list else 0,
                 "source": "user-config",
                 "api_url": api_url,
@@ -1525,6 +1543,12 @@ def list_authenticated_providers(
                 or ""
             ).strip().rstrip("/")
             if not raw_name or not api_url:
+                continue
+
+            # Skip if a built-in provider with the same slug was already
+            # emitted in sections 1-3 (e.g. deepseek detected via
+            # DEEPSEEK_API_KEY vs the same endpoint in config.yaml providers).
+            if raw_name.lower() in seen_slugs:
                 continue
             api_key = (entry.get("api_key") or "").strip()
 
