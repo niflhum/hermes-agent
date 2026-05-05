@@ -52,7 +52,7 @@ from gateway.status import get_running_pid, read_runtime_status
 try:
     from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
     from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+    from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
     from fastapi.staticfiles import StaticFiles
     from pydantic import BaseModel
 except ImportError:
@@ -119,6 +119,7 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/dashboard/themes",
     "/api/dashboard/plugins",
     "/api/dashboard/plugins/rescan",
+    "/api/chat/token-stream",
 })
 
 
@@ -3648,6 +3649,91 @@ def _normalise_prefix(raw: Optional[str]) -> str:
     if len(p) > 64:
         return ""
     return p
+
+
+# ---------------------------------------------------------------------------
+# /api/chat/token-stream — real-time token usage HUD (Server-Sent Events)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/chat/token-stream")
+async def token_stream(request: Request):
+    """SSE endpoint that streams token usage, cost, and rate-limit info
+    from the latest active (or most recent) session.
+
+    The frontend TokenHUD consumes this and stays open as long as the
+    chat tab is mounted; reconnection is handled by the EventSource.
+    """
+    from hermes_state import SessionDB
+
+    async def generate():
+        db = SessionDB()
+        last_sent: dict = {}
+
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+
+                # Prefer the newest UN-ended session (live chat), then fall
+                # back to the most recent session overall so the HUD shows
+                # something even between messages.
+                cur = db._conn.execute(
+                    """
+                    SELECT id, model, billing_provider,
+                           input_tokens, output_tokens,
+                           cache_read_tokens, cache_write_tokens,
+                           reasoning_tokens,
+                           estimated_cost_usd, actual_cost_usd,
+                           api_call_count, started_at
+                    FROM sessions
+                    WHERE ended_at IS NULL
+                    ORDER BY started_at DESC LIMIT 1
+                    """
+                )
+                row = cur.fetchone()
+
+                if not row:
+                    cur = db._conn.execute(
+                        """
+                        SELECT id, model, billing_provider,
+                               input_tokens, output_tokens,
+                               cache_read_tokens, cache_write_tokens,
+                               reasoning_tokens,
+                               estimated_cost_usd, actual_cost_usd,
+                               api_call_count, started_at
+                        FROM sessions
+                        ORDER BY started_at DESC LIMIT 1
+                        """
+                    )
+                    row = cur.fetchone()
+
+                if row:
+                    payload: dict = dict(row)
+                    # Only emit when data actually changed (saves bandwidth)
+                    payload["ts"] = time.time()
+                    if payload != last_sent:
+                        last_sent = payload
+                        yield f"data: {json.dumps(payload)}\n\n"
+                    else:
+                        # Keepalive — SSE comment, client ignores
+                        yield ": keepalive\n\n"
+                else:
+                    yield ": waiting\n\n"
+
+                await asyncio.sleep(2)
+        finally:
+            db.close()
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # nginx passthrough
+        },
+    )
 
 
 def mount_spa(application: FastAPI):
